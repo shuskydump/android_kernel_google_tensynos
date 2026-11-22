@@ -67,13 +67,19 @@ jobs:
             zip
 
       - name: Setup Eva GCC Toolchain (mvaisakh/gcc-build)
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -e
           echo "Fetching latest Eva GCC release from mvaisakh/gcc-build..."
-          LATEST_TAG=$(curl -fsSL https://api.github.com/repos/mvaisakh/gcc-build/releases/latest | jq -r .tag_name)
+          LATEST_TAG=$(gh release view -R mvaisakh/gcc-build --json tagName -q .tagName 2>/dev/null || curl -fsSL -H "Authorization: Bearer ${{ github.token }}" https://api.github.com/repos/mvaisakh/gcc-build/releases/latest | jq -r .tag_name || echo "15112026")
+          if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" = "null" ]; then
+            LATEST_TAG="15112026"
+          fi
           echo "Using tag: $LATEST_TAG"
           mkdir -p toolchain
-          curl -fL "https://github.com/mvaisakh/gcc-build/releases/download/${LATEST_TAG}/eva-gcc-arm64-${LATEST_TAG}.xz" -o eva-gcc-arm64.tar
+          curl -fL "https://github.com/mvaisakh/gcc-build/releases/download/${LATEST_TAG}/eva-gcc-arm64-${LATEST_TAG}.xz" -o eva-gcc-arm64.tar || \
+            curl -fL "https://github.com/mvaisakh/gcc-build/releases/download/15112026/eva-gcc-arm64-15112026.xz" -o eva-gcc-arm64.tar
           tar -xf eva-gcc-arm64.tar --strip-components=1 -C toolchain
           rm -f eva-gcc-arm64.tar
 
