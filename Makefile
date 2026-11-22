@@ -1383,9 +1383,6 @@ archprepare: outputmakefile archheaders archscripts scripts include/config/kerne
 prepare0: archprepare
 	$(Q)$(MAKE) $(build)=scripts/mod
 	$(Q)$(MAKE) $(build)=. prepare
-ifdef CONFIG_SECURITY_SELINUX
-	$(Q)$(MAKE) $(build)=security/selinux security/selinux/flask.h
-endif
 
 # All the preparing..
 prepare: prepare0

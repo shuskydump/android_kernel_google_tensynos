@@ -25,7 +25,9 @@
 #include <linux/lsm_hooks.h>
 #include <linux/msg.h>
 #include <net/net_namespace.h>
+#if __has_include("flask.h")
 #include "flask.h"
+#endif
 #include "avc.h"
 
 struct task_security_struct {
