@@ -588,7 +588,7 @@ KBUILD_CFLAGS   := -Wall -Wundef -Werror=strict-prototypes -Wno-trigraphs \
 		   -Werror=implicit-function-declaration -Werror=implicit-int \
 		   -Werror=return-type -Wno-format-security \
 		   -std=gnu11
-KBUILD_CPPFLAGS := -D__KERNEL__ -D__linux__ -D__linux
+KBUILD_CPPFLAGS := -D__KERNEL__ -D__linux__ -D__linux -I$(srctree)/security/selinux -I$(objtree)/security/selinux
 KBUILD_RUSTFLAGS := $(rust_common_flags) \
 		    --target=$(objtree)/rust/target.json \
 		    -Cpanic=abort -Cembed-bitcode=n -Clto=n \
@@ -1383,6 +1383,9 @@ archprepare: outputmakefile archheaders archscripts scripts include/config/kerne
 prepare0: archprepare
 	$(Q)$(MAKE) $(build)=scripts/mod
 	$(Q)$(MAKE) $(build)=. prepare
+ifdef CONFIG_SECURITY_SELINUX
+	$(Q)$(MAKE) $(build)=security/selinux security/selinux/flask.h
+endif
 
 # All the preparing..
 prepare: prepare0
