@@ -93,6 +93,9 @@ obj-$(CONFIG_RUST)	+= rust/
 obj-y			+= $(ARCH_LIB)
 obj-y			+= drivers/
 obj-y			+= sound/
+
+# Ensure security (including selinux/flask.h) is built before drivers
+drivers: security
 obj-$(CONFIG_SAMPLES)	+= samples/
 obj-$(CONFIG_NET)	+= net/
 obj-y			+= virt/

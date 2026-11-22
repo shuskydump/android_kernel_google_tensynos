@@ -588,7 +588,7 @@ KBUILD_CFLAGS   := -Wall -Wundef -Werror=strict-prototypes -Wno-trigraphs \
 		   -Werror=implicit-function-declaration -Werror=implicit-int \
 		   -Werror=return-type -Wno-format-security \
 		   -std=gnu11
-KBUILD_CPPFLAGS := -D__KERNEL__ -D__linux__ -D__linux -I$(srctree)/security/selinux -I$(objtree)/security/selinux
+KBUILD_CPPFLAGS := -D__KERNEL__ -D__linux__ -D__linux -I$(objtree)/security/selinux -I$(srctree)/security/selinux
 KBUILD_RUSTFLAGS := $(rust_common_flags) \
 		    --target=$(objtree)/rust/target.json \
 		    -Cpanic=abort -Cembed-bitcode=n -Clto=n \
