@@ -161,14 +161,14 @@ libs-$(CONFIG_EFI_STUB) += $(objtree)/drivers/firmware/efi/libstub/lib.a
 boot		:= arch/arm64/boot
 
 ifeq ($(CONFIG_EFI_ZBOOT),)
-KBUILD_IMAGE	:= $(boot)/Image.gz
+KBUILD_IMAGE	:= $(boot)/Image.lz4
 else
 KBUILD_IMAGE	:= $(boot)/vmlinuz.efi
 endif
 
 # Don't compile Image in mixed build with "all" target
 ifndef KBUILD_MIXED_TREE
-all:	$(notdir $(KBUILD_IMAGE))
+all:	$(notdir $(KBUILD_IMAGE)) dtbs
 endif
 
 vmlinuz.efi: Image
