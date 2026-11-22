@@ -18,7 +18,7 @@ on:
         description: Kernel variant
         type: choice
         required: true
-        default: all
+        default: ksu-next-susfs
         options:
           - all
           - ksu-susfs
@@ -100,6 +100,7 @@ jobs:
     uses: ./.github/workflows/build.yml
 
     with:
+      branch: ${{ github.ref_name }}
       target: ${{ matrix.target }}
       variant: ${{ matrix.variant }}
 

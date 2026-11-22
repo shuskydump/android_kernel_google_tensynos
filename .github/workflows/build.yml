@@ -4,8 +4,9 @@ on:
   workflow_call:
     inputs:
       branch:
-        required: true
+        required: false
         type: string
+        default: "17.0.0-cp4a-lts"
         
       target:
         required: true
@@ -17,7 +18,7 @@ on:
 
 jobs:
   build:
-    name: "${{ inputs.branch }} • ${{ inputs.target }} • ${{ inputs.variant }}"
+    name: "${{ inputs.branch || github.ref_name }} • ${{ inputs.target }} • ${{ inputs.variant }}"
     runs-on: ubuntu-latest
 
     permissions:
@@ -30,8 +31,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.branch }} 
+          ref: ${{ inputs.branch || github.ref_name }} 
           submodules: recursive
+
+      - name: Checkout shared scripts
+        uses: actions/checkout@v4
+        with:
+          repository: Ante0/gscripts
+          ref: main
+          path: shared-gscripts
 
       - name: Install dependencies
         run: |
@@ -53,8 +61,36 @@ jobs:
             pahole \
             python3 \
             rsync \
+            tar \
             unzip \
+            xz-utils \
             zip
+
+      - name: Setup Eva GCC Toolchain (mvaisakh/gcc-build)
+        run: |
+          set -e
+          echo "Fetching latest Eva GCC release from mvaisakh/gcc-build..."
+          LATEST_TAG=$(curl -fsSL https://api.github.com/repos/mvaisakh/gcc-build/releases/latest | jq -r .tag_name)
+          echo "Using tag: $LATEST_TAG"
+          mkdir -p toolchain
+          curl -fL "https://github.com/mvaisakh/gcc-build/releases/download/${LATEST_TAG}/eva-gcc-arm64-${LATEST_TAG}.xz" -o eva-gcc-arm64.tar
+          tar -xf eva-gcc-arm64.tar --strip-components=1 -C toolchain
+          rm -f eva-gcc-arm64.tar
+
+          # Provide both aarch64-linux-* and aarch64-elf-* aliases
+          cd toolchain/bin
+          for f in aarch64-elf-*; do
+            ln -sf "$f" "${f/aarch64-elf-/aarch64-linux-}"
+          done
+          cd "$GITHUB_WORKSPACE"
+
+          # Point toolchains directory to downloaded Eva GCC
+          rm -rf toolchains/gcc-14.2.0-nolibc/aarch64-linux
+          mkdir -p toolchains/gcc-14.2.0-nolibc
+          ln -s "$GITHUB_WORKSPACE/toolchain" toolchains/gcc-14.2.0-nolibc/aarch64-linux
+
+          echo "GCC version:"
+          ./toolchain/bin/aarch64-linux-gcc -v
 
       - name: Restore ccache
         uses: actions/cache@v4
@@ -66,24 +102,26 @@ jobs:
             ccache-${{ runner.os }}
 
       - name: Prepare scripts
-        run: chmod +x scripts/*.sh
+        run: chmod +x shared-gscripts/*.sh
 
       - name: Patch source tree
         run: |
-          ./gscripts/patch_sultan.sh "$TARGET" "$VARIANT"
+          ./shared-gscripts/patch_sultan.sh "$TARGET" "$VARIANT"
 
       - name: Build kernel
         run: |
-          ./gscripts/build.sh "$TARGET"
+          ./shared-gscripts/build.sh "$TARGET"
 
       - name: Package AnyKernel
         run: |
-          ./gscripts/package.sh "$TARGET" "$VARIANT"
+          ./shared-gscripts/package.sh "$TARGET" "$VARIANT"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Sultan_${{ inputs.branch }}_${{ inputs.target }}_${{ inputs.variant }}
-          path: AnyKernel/*
+          name: Sultan_LTS_${{ inputs.branch || github.ref_name }}_${{ inputs.target }}_${{ inputs.variant }}
+          path: |
+            dist/*
+            AnyKernel/*
           if-no-files-found: error
           compression-level: 0
