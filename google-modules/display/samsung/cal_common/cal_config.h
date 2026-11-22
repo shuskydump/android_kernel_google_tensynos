@@ -14,7 +14,7 @@
 #define __CAL_OS_CONFIG_H__
 
 /* include headers */
-#ifdef __linux__
+#if defined(__linux__) || defined(__KERNEL__)
 #include <linux/io.h>		/* readl/writel */
 #include <linux/delay.h>	/* udelay */
 #include <linux/err.h>		/* EBUSY, EINVAL */
