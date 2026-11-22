@@ -159,10 +159,12 @@ static int debug_kinfo_probe(struct platform_device *pdev)
 	info->thread_size = THREAD_SIZE;
 	info->swapper_pg_dir_pa = (u64)__pa_symbol(swapper_pg_dir);
 	strlcpy(info->last_uts_release, init_utsname()->release, sizeof(info->last_uts_release));
+#ifdef CONFIG_MODULES
 	info->enabled_modules_tree_lookup = IS_ENABLED(CONFIG_MODULES_TREE_LOOKUP);
 	info->mod_core_layout_offset = offsetof(struct module, core_layout);
 	info->mod_init_layout_offset = offsetof(struct module, init_layout);
 	info->mod_kallsyms_offset = offsetof(struct module, kallsyms);
+#endif
 #if defined(CONFIG_RANDOMIZE_BASE) && defined(MODULES_VSIZE)
 	info->module_start_va = module_alloc_base;
 	info->module_end_va = info->module_start_va + MODULES_VSIZE;
