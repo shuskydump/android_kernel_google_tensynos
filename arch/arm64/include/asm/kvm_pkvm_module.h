@@ -196,6 +196,8 @@ struct pkvm_module_ops {
 int __pkvm_load_el2_module(struct module *this, unsigned long *token);
 
 int __pkvm_register_el2_call(unsigned long hfn_hyp_va);
+
+int pkvm_load_early_modules(void);
 #else
 static inline int __pkvm_load_el2_module(struct module *this,
 					 unsigned long *token)
@@ -214,10 +216,7 @@ static inline int pkvm_load_early_modules(void)
 }
 #endif /* CONFIG_MODULES */
 
-#ifdef CONFIG_MODULES
-int pkvm_load_early_modules(void);
-
-#ifdef CONFIG_MODULES
+#ifdef MODULE
 /*
  * Convert an EL2 module addr from the kernel VA to the hyp VA
  */
