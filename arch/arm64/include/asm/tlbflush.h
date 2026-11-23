@@ -97,8 +97,8 @@ static inline unsigned long get_trans_granule(void)
 	u64 arg = addr;							\
 									\
 	if (cpus_have_const_cap(ARM64_HAS_ARMv8_4_TTL) &&		\
-	    level) {							\
-		u64 ttl = level & 3;					\
+	    (level) != 0) {						\
+		u64 ttl = (level) & 3;					\
 		ttl |= get_trans_granule() << 2;			\
 		arg &= ~TLBI_TTL_MASK;					\
 		arg |= FIELD_PREP(TLBI_TTL_MASK, ttl);			\
