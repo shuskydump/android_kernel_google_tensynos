@@ -89,10 +89,6 @@ static struct vfsmount *shm_mnt;
 
 #include "internal.h"
 
-#ifdef CONFIG_MEMFD_ASHMEM_SHIM
-#include "memfd-ashmem-shim.h"
-#endif
-
 #define BLOCKS_PER_PAGE  (PAGE_SIZE/512)
 #define VM_ACCT(size)    (PAGE_ALIGN(size) >> PAGE_SHIFT)
 
@@ -471,8 +467,8 @@ static bool shmem_confirm_swap(struct address_space *mapping,
 
 static int shmem_huge __read_mostly = SHMEM_HUGE_NEVER;
 
-bool shmem_is_huge(struct vm_area_struct *vma, struct inode *inode,
-		   pgoff_t index, bool shmem_huge_force)
+static bool __shmem_is_huge(struct vm_area_struct *vma, struct inode *inode,
+			    pgoff_t index, bool shmem_huge_force)
 {
 	loff_t i_size;
 
@@ -502,6 +498,15 @@ bool shmem_is_huge(struct vm_area_struct *vma, struct inode *inode,
 	default:
 		return false;
 	}
+}
+
+bool shmem_is_huge(struct vm_area_struct *vma, struct inode *inode,
+		   pgoff_t index, bool shmem_huge_force)
+{
+	if (HPAGE_PMD_ORDER > MAX_PAGECACHE_ORDER)
+		return false;
+
+	return __shmem_is_huge(vma, inode, index, shmem_huge_force);
 }
 
 #if defined(CONFIG_SYSFS)
@@ -2316,13 +2321,19 @@ static int shmem_mmap(struct file *file, struct vm_area_struct *vma)
 	struct shmem_inode_info *info = SHMEM_I(file_inode(file));
 	int ret;
 
-	ret = seal_check_future_write(info->seals, vma);
+	ret = seal_check_write(info->seals, vma);
 	if (ret)
 		return ret;
 
 	file_accessed(file);
 	vma->vm_ops = &shmem_vm_ops;
 	return 0;
+}
+
+static int shmem_file_open(struct inode *inode, struct file *file)
+{
+	file->f_mode |= FMODE_CAN_ODIRECT;
+	return generic_file_open(inode, file);
 }
 
 #ifdef CONFIG_TMPFS_XATTR
@@ -2737,6 +2748,28 @@ static ssize_t shmem_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 	*ppos = ((loff_t) index << PAGE_SHIFT) + offset;
 	file_accessed(file);
 	return retval ? retval : error;
+}
+
+static ssize_t shmem_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
+{
+	struct file *file = iocb->ki_filp;
+	struct inode *inode = file->f_mapping->host;
+	ssize_t ret;
+
+	inode_lock(inode);
+	ret = generic_write_checks(iocb, from);
+	if (ret <= 0)
+		goto unlock;
+	ret = file_remove_privs(file);
+	if (ret)
+		goto unlock;
+	ret = file_update_time(file);
+	if (ret)
+		goto unlock;
+	ret = generic_perform_write(iocb, from);
+unlock:
+	inode_unlock(inode);
+	return ret;
 }
 
 static loff_t shmem_file_llseek(struct file *file, loff_t offset, int whence)
@@ -3970,21 +4003,16 @@ EXPORT_SYMBOL(shmem_aops);
 
 static const struct file_operations shmem_file_operations = {
 	.mmap		= shmem_mmap,
+	.open		= shmem_file_open,
 	.get_unmapped_area = shmem_get_unmapped_area,
 #ifdef CONFIG_TMPFS
 	.llseek		= shmem_file_llseek,
 	.read_iter	= shmem_file_read_iter,
-	.write_iter	= generic_file_write_iter,
+	.write_iter	= shmem_file_write_iter,
 	.fsync		= noop_fsync,
 	.splice_read	= generic_file_splice_read,
 	.splice_write	= iter_file_splice_write,
 	.fallocate	= shmem_fallocate,
-#endif
-#ifdef CONFIG_MEMFD_ASHMEM_SHIM
-	.unlocked_ioctl	= memfd_ashmem_shim_ioctl,
-#ifdef CONFIG_COMPAT
-	.compat_ioctl	= memfd_ashmem_shim_compat_ioctl,
-#endif
 #endif
 };
 

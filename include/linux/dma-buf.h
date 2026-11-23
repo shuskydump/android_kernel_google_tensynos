@@ -24,6 +24,7 @@
 #include <linux/wait.h>
 #include <linux/android_kabi.h>
 #include <linux/atomic.h>
+#include <linux/jump_label.h>
 
 struct device;
 struct dma_buf;
@@ -768,6 +769,7 @@ void dma_buf_unpin(struct dma_buf_attachment *attach);
 struct dma_buf *dma_buf_export(const struct dma_buf_export_info *exp_info);
 
 int dma_buf_fd(struct dma_buf *dmabuf, int flags);
+void dma_buf_fd_install(struct dma_buf *dmabuf, int fd);
 struct dma_buf *dma_buf_get(int fd);
 void dma_buf_put(struct dma_buf *dmabuf);
 
@@ -808,8 +810,20 @@ int is_dma_buf_file(struct file *file);
 int dma_buf_account_task(struct dma_buf *dmabuf, struct task_dma_buf_info *dmabuf_info);
 void dma_buf_unaccount_task(struct dma_buf *dmabuf, struct task_dma_buf_info *dmabuf_info);
 int copy_dmabuf_info(u64 clone_flags, struct task_struct *task);
+void get_dmabuf_info(struct task_dma_buf_info *dmabuf_info);
 void put_dmabuf_info(struct task_dma_buf_info *dmabuf_info);
 int dma_buf_begin_new_exec(struct files_struct *old_files);
+
+DECLARE_STATIC_KEY_TRUE(dmabuf_accounting_key);
+/**
+ * is_dmabuf_accounting_enabled - Check if dmabuf accounting is enabled
+ *
+ * Return: true if enabled, false otherwise
+ */
+static inline bool is_dmabuf_accounting_enabled(void)
+{
+	return static_branch_likely(&dmabuf_accounting_key);
+}
 
 #else /* CONFIG_DMA_SHARED_BUFFER */
 
@@ -820,8 +834,11 @@ static inline void dma_buf_unaccount_task(struct dma_buf *dmabuf,
 					  struct task_dma_buf_info *dmabuf_info) {}
 static inline int copy_dmabuf_info(u64 clone_flags,
 				   struct task_struct *task) { return 0; }
+static inline void get_dmabuf_info(struct task_dma_buf_info *dmabuf_info) {}
 static inline void put_dmabuf_info(struct task_dma_buf_info *dmabuf_info) {}
 static inline int dma_buf_begin_new_exec(struct files_struct *old_files) { return 0; }
 
+static inline bool is_dmabuf_accounting_enabled(void) { return false; }
 #endif /* CONFIG_DMA_SHARED_BUFFER */
+
 #endif /* __DMA_BUF_H__ */

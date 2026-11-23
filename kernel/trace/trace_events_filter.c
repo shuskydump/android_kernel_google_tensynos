@@ -573,6 +573,12 @@ predicate_parse(const char *str, int nr_parens, int nr_preds,
 			top--;					/* #12 */
 		}
 	}
+	/* Only the inner loop can complete a non-empty expression. */
+	if (N) {
+		ret = -EINVAL;
+		parse_error(pe, FILT_ERR_INVALID_FILTER, ptr - str);
+		goto out_free;
+	}
  out:
 	if (top != op_stack) {
 		/* Too many '(' */
@@ -894,6 +900,9 @@ static int regex_match_full(char *str, struct regex *r, int len)
 	if (!len)
 		return strcmp(str, r->pattern) == 0;
 
+	if (len < r->len)
+		return 0;
+
 	return strncmp(str, r->pattern, len) == 0;
 }
 
@@ -923,11 +932,9 @@ static int regex_match_end(char *str, struct regex *r, int len)
 	return 0;
 }
 
-static int regex_match_glob(char *str, struct regex *r, int len __maybe_unused)
+static int regex_match_glob(char *str, struct regex *r, int len)
 {
-	if (glob_match(r->pattern, str))
-		return 1;
-	return 0;
+	return glob_match_len(r->pattern, str, len) ? 1 : 0;
 }
 
 /**
@@ -1996,6 +2003,9 @@ int apply_event_filter(struct trace_event_file *file, char *filter_string)
 	struct trace_event_call *call = file->event_call;
 	struct event_filter *filter = NULL;
 	int err;
+
+	if (file->flags & EVENT_FILE_FL_FREED)
+		return -ENODEV;
 
 	if (!strcmp(strstrip(filter_string), "0")) {
 		filter_disable(file);

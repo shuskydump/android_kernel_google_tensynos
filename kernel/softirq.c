@@ -582,7 +582,7 @@ static __u32 softirq_deferred_for_rt(__u32 *pending)
 {
 	__u32 deferred = 0;
 
-	if (rt_task(current)) {
+	if (rt_task(current) || local_rt_runnable()) {
 		deferred = *pending & LONG_SOFTIRQ_MASK;
 		*pending &= ~LONG_SOFTIRQ_MASK;
 	}
@@ -874,13 +874,13 @@ static void tasklet_action_common(struct softirq_action *a,
 			if (!atomic_read(&t->count)) {
 				if (tasklet_clear_sched(t)) {
 					if (t->use_callback) {
-						trace_tasklet_entry(t->callback);
+						trace_tasklet_entry(t, t->callback);
 						t->callback(t);
-						trace_tasklet_exit(t->callback);
+						trace_tasklet_exit(t, t->callback);
 					} else {
-						trace_tasklet_entry(t->func);
+						trace_tasklet_entry(t, t->func);
 						t->func(t->data);
-						trace_tasklet_exit(t->func);
+						trace_tasklet_exit(t, t->func);
 					}
 				}
 				tasklet_unlock(t);
