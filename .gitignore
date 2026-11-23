@@ -11,6 +11,8 @@
 # Normal rules (sorted alphabetically)
 #
 .*
+!.github/
+!.gitignore
 *.a
 *.asn1.[ch]
 *.bin
@@ -174,3 +176,35 @@ all_kmi_symbols
 
 # Object directory
 out/
+
+# Build, packaging & toolchain artifacts
+dist/
+AnyKernel/
+toolchain/
+toolchains/
+shared-gscripts/
+otg_host_shim/
+*.orig
+*.rej
+KernelSU/
+KernelSU-Next/
+NoMount/
+susfs4ksu/
+vpnhide/
+
+# Build, packaging & toolchain artifacts
+dist/
+AnyKernel/
+toolchain/
+toolchains/
+shared-gscripts/
+otg_host_shim/
+*.orig
+*.rej
+KernelSU/
+KernelSU-Next/
+NoMount/
+susfs4ksu/
+vpnhide/
+!sultan_patches/**
+!kernel_patches/**

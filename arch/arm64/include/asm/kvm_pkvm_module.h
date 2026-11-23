@@ -207,8 +207,14 @@ static inline int __pkvm_register_el2_call(unsigned long hfn_hyp_va)
 {
 	return -ENOSYS;
 }
+
+static inline int pkvm_load_early_modules(void)
+{
+	return 0;
+}
 #endif /* CONFIG_MODULES */
 
+#ifdef CONFIG_MODULES
 int pkvm_load_early_modules(void);
 
 #ifdef CONFIG_MODULES

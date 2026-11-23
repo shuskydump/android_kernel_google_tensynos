@@ -1,49 +1,111 @@
 name: Build Kernel
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
-      branch:
-        required: true
-        type: string
-        
       target:
+        description: "Device target"
+        type: choice
         required: true
-        type: string
-
+        default: "all"
+        options:
+          - "all"
+          - "gs201"
+          - "zuma"
+          - "zumapro"
       variant:
+        description: "Kernel variant"
+        type: choice
         required: true
-        type: string
+        default: "ksu-next-susfs"
+        options:
+          - "all"
+          - "ksu-susfs"
+          - "ksu-next-susfs"
+      create_release:
+        description: "Publish GitHub Release & Telegram announcement"
+        type: boolean
+        required: false
+        default: true
+
+  schedule:
+    - cron: "0 2 * * *"
 
 jobs:
-  build:
-    name: "${{ inputs.branch }} • ${{ inputs.target }} • ${{ inputs.variant }}"
+  matrix:
+    name: Generate build matrix
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      release: ${{ steps.set-matrix.outputs.release }}
+    steps:
+      - id: set-matrix
+        shell: bash
+        run: |
+          set -Eeuo pipefail
 
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
+              TARGETS=(gs201 zuma zumapro)
+              VARIANTS=(ksu-next-susfs)
+              CREATE_RELEASE=true
+          else
+              TARGET="${{ github.event.inputs.target }}"
+              VARIANT="${{ github.event.inputs.variant }}"
+              CREATE_RELEASE="${{ github.event.inputs.create_release }}"
+
+              if [[ "$TARGET" == "all" ]]; then
+                  TARGETS=(gs201 zuma zumapro)
+              else
+                  TARGETS=("$TARGET")
+              fi
+
+              if [[ "$VARIANT" == "all" ]]; then
+                  VARIANTS=(ksu-susfs ksu-next-susfs)
+              else
+                  VARIANTS=("$VARIANT")
+              fi
+          fi
+
+          JSON='{"include":['
+          FIRST=true
+          for T in "${TARGETS[@]}"; do
+              for V in "${VARIANTS[@]}"; do
+                  if $FIRST; then
+                      FIRST=false
+                  else
+                      JSON+=","
+                  fi
+                  JSON+="{\"target\":\"${T}\",\"variant\":\"${V}\"}"
+              done
+          done
+          JSON+="]}"
+
+          echo "Matrix: $JSON"
+          echo "Release: $CREATE_RELEASE"
+
+          echo "matrix=$JSON" >> "$GITHUB_OUTPUT"
+          echo "release=$CREATE_RELEASE" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: "${{ matrix.target }} • ${{ matrix.variant }}"
+    needs: matrix
+    runs-on: ubuntu-latest
     permissions:
       contents: read
-
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.matrix.outputs.matrix) }}
     env:
-      TARGET: ${{ inputs.target }}
-      VARIANT: ${{ inputs.variant }}
-
+      TARGET: ${{ matrix.target }}
+      VARIANT: ${{ matrix.variant }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.branch }} 
           submodules: recursive
-
-      - name: Checkout shared scripts
-        uses: actions/checkout@v4
-        with:
-          repository: Ante0/gscripts
-          ref: main
-          path: shared-gscripts
 
       - name: Install dependencies
         run: |
           sudo apt-get update
-
           sudo apt-get install -y \
             bc \
             bison \
@@ -60,34 +122,137 @@ jobs:
             pahole \
             python3 \
             rsync \
+            tar \
             unzip \
+            xz-utils \
             zip
+
+      - name: Setup Eva GCC Toolchain (mvaisakh/gcc-build)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          echo "Fetching latest Eva GCC release from mvaisakh/gcc-build..."
+          LATEST_TAG=$(gh release view -R mvaisakh/gcc-build --json tagName -q .tagName 2>/dev/null || curl -fsSL -H "Authorization: Bearer ${{ github.token }}" https://api.github.com/repos/mvaisakh/gcc-build/releases/latest | jq -r .tag_name || echo "15112026")
+          if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" = "null" ]; then
+            LATEST_TAG="15112026"
+          fi
+          echo "Using tag: $LATEST_TAG"
+          mkdir -p toolchain
+          curl -fL "https://github.com/mvaisakh/gcc-build/releases/download/${LATEST_TAG}/eva-gcc-arm64-${LATEST_TAG}.xz" -o eva-gcc-arm64.tar || \
+            curl -fL "https://github.com/mvaisakh/gcc-build/releases/download/15112026/eva-gcc-arm64-15112026.xz" -o eva-gcc-arm64.tar
+          tar -xf eva-gcc-arm64.tar --strip-components=1 -C toolchain
+          rm -f eva-gcc-arm64.tar
+
+          # Provide both aarch64-linux-* and aarch64-elf-* aliases
+          cd toolchain/bin
+          for f in aarch64-elf-*; do
+            ln -sf "$f" "${f/aarch64-elf-/aarch64-linux-}"
+          done
+          cd "$GITHUB_WORKSPACE"
+
+          # Point toolchains directory to downloaded Eva GCC
+          rm -rf toolchains/gcc-14.2.0-nolibc/aarch64-linux
+          mkdir -p toolchains/gcc-14.2.0-nolibc
+          ln -s "$GITHUB_WORKSPACE/toolchain" toolchains/gcc-14.2.0-nolibc/aarch64-linux
+
+          echo "GCC version:"
+          ./toolchain/bin/aarch64-linux-gcc -v
 
       - name: Restore ccache
         uses: actions/cache@v4
         with:
           path: ~/.ccache
-          key: ccache-${{ runner.os }}-${{ inputs.target }}
+          key: ccache-${{ runner.os }}-${{ matrix.target }}
           restore-keys: |
-            ccache-${{ runner.os }}-${{ inputs.target }}
+            ccache-${{ runner.os }}-${{ matrix.target }}
             ccache-${{ runner.os }}
+
+      - name: Prepare scripts
+        run: chmod +x gscripts/*.sh
 
       - name: Patch source tree
         run: |
-          ./shared-gscripts/patch_sultan.sh "$TARGET" "$VARIANT"
+          ./gscripts/patch_sultan.sh "$TARGET" "$VARIANT"
 
       - name: Build kernel
         run: |
-          ./shared-gscripts/build.sh "$TARGET"
+          ./gscripts/build.sh "$TARGET"
 
       - name: Package AnyKernel
         run: |
-          ./shared-gscripts/package.sh "$TARGET" "$VARIANT"
+          ./gscripts/package.sh "$TARGET" "$VARIANT"
 
-      - name: Upload artifact
+      - name: Upload AnyKernel artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Sultan_${{ inputs.branch }}_${{ inputs.target }}_${{ inputs.variant }}
-          path: AnyKernel/*
+          name: Sultan_LTS_${{ github.ref_name }}_${{ matrix.target }}_${{ matrix.variant }}
+          path: |
+            AnyKernel/*
+            !AnyKernel/.git*
           if-no-files-found: error
-          compression-level: 0
+          compression-level: 9
+
+      - name: Upload flashable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: SULTAN17_${{ matrix.target }}_${{ matrix.variant }}_ZIP
+          path: dist/*.zip
+          if-no-files-found: error
+
+      - name: Send build to Telegram
+        if: ${{ env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != '' }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          ./gscripts/telegram.sh build "$TARGET" "$VARIANT" "${{ github.ref_name }}"
+
+  release:
+    name: Publish Release
+    needs: [matrix, build]
+    if: needs.matrix.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gh curl jq
+
+      - name: Prepare scripts
+        run: chmod +x gscripts/*.sh
+
+      - name: Download all flashable zips
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*_ZIP"
+          path: dist
+          merge-multiple: true
+
+      - name: List downloaded packages
+        run: ls -lh dist
+
+      - name: Update GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASE_NOTES="Sultan Kernel build for ${GITHUB_REF_NAME} ($(git rev-parse --short HEAD))"
+          ./gscripts/release-nightly.sh \
+            "$(git rev-parse HEAD)" \
+            "in-tree" \
+            "in-tree" \
+            "in-tree" \
+            "in-tree" \
+            "$RELEASE_NOTES"
+
+      - name: Send release announcement to Telegram
+        if: ${{ env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != '' }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          ./gscripts/telegram.sh release "Sultan Kernel build for ${GITHUB_REF_NAME}"
